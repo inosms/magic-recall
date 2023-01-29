@@ -11,7 +11,7 @@ For every external keypair (at least one! e.g. yubikey, paperkey)
 1. Create recovery ed25519 keypair for recovery (`signrecovery{n}`)
 1. Create recovery age keypair for recovery (`agerecovery{n}`)
 
-Save the hash of the id of `agerecovery` (A) and the public key of `signrecovery` (B) locally and distribute it to peers so they can announce the backups with (A) and identify the peer with (B).
+Save the hash of the public id of `signrecovery` (A) and the public key of `signrecovery` (B) locally and distribute it to peers so they can announce the backups with (A) and identify the peer with (B).
 
 
 ### Recovery
