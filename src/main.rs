@@ -17,9 +17,8 @@ use libp2p::Transport;
 use libp2p::{identity, ping, Multiaddr, PeerId};
 use rand::seq::SliceRandom;
 
-use crate::magic_ether::MagicEtherBuilder;
-
 mod magic_ether;
+use magic_ether::magic_ether::*;
 
 /// Store encrypted backups at remote nodes
 #[derive(Parser, Debug)]
@@ -68,12 +67,24 @@ async fn main() -> Result<()> {
         .map(|addr| Ok((getPeerId(addr)?, addr.clone())))
         .collect::<Result<Vec<_>>>()?;
 
-    let magic_ether = MagicEtherBuilder::new()
+    let mut magic_ether = MagicEtherBuilder::new()
         .with_identity(local_key)
         .on_port(args.port.unwrap_or(0))
         .use_default_bootstrap_nodes(args.mode == NodeMode::UseDefaultNetwork)
         .add_bootstrap_nodes(bootstrap_nodes)
-        .spawn_and_bootstrap().await?;
+        .spawn_and_bootstrap()
+        .await?;
+
+    loop {
+        magic_ether.find_relays().await;
+        if let Some(remote_peer) = args.remote_peer_id {
+            warn!("start finding {:?}", &remote_peer);
+            let result = magic_ether.find_peer(remote_peer).await;
+            warn!("found {:?}", result);
+            std::thread::sleep(Duration::from_secs(60));
+        }
+        std::thread::sleep(Duration::from_secs(60));
+    }
 
     std::thread::sleep(Duration::MAX);
 
