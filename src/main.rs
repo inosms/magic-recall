@@ -1,6 +1,8 @@
 extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
+extern crate serde;
+
 use std::time::Duration;
 
 use anyhow::{Error, Result};
@@ -16,6 +18,12 @@ use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use libp2p::Transport;
 use libp2p::{identity, ping, Multiaddr, PeerId};
 use rand::seq::SliceRandom;
+
+use futures::{
+    future::FutureExt, // for `.fuse()`
+    pin_mut,
+    select,
+};
 
 mod magic_ether;
 use magic_ether::magic_ether::*;
@@ -75,18 +83,33 @@ async fn main() -> Result<()> {
         .spawn_and_bootstrap()
         .await?;
 
-    loop {
-        magic_ether.find_relays().await;
-        if let Some(remote_peer) = args.remote_peer_id {
-            warn!("start finding {:?}", &remote_peer);
-            let result = magic_ether.find_peer(remote_peer).await;
-            warn!("found {:?}", result);
-            std::thread::sleep(Duration::from_secs(60));
-        }
-        std::thread::sleep(Duration::from_secs(60));
-    }
+    let mut incoming_connections_requests =
+        Box::pin(magic_ether.clone().poll_connection_requests().await?.fuse());
 
-    std::thread::sleep(Duration::MAX);
+    let mut connection_future = if let Some(remote_peer) = args.remote_peer_id {
+        magic_ether.request_connection_to(remote_peer).boxed()
+    } else {
+        futures::future::ready(Err(anyhow::Error::msg("No peer id"))).boxed()
+    }
+    .fuse();
+
+    loop {
+        select! {
+            incoming = incoming_connections_requests.next() => {
+                error!("[MAIN] Incoming {:?}", &incoming);
+                if let Some(incoming) = incoming {
+                    let peer_id = incoming.peer_id();
+                    error!("[MAIN] Accepting {:?}", peer_id);
+                    let connection = incoming.accept().await;
+                    error!("[MAIN] Accepted {:?}", peer_id);
+                }
+            },
+            peer_connection = connection_future  => {
+                error!("[MAIN] peer_connection {:?}", peer_connection);
+            },
+            complete => break,
+        };
+    }
 
     Ok(())
 
